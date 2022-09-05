@@ -3,54 +3,125 @@ package tasks
 import (
 	"context"
 	"github.com/sirupsen/logrus"
-	"sync"
 	"time"
 )
 
 type TaskManager struct {
-	Interval  time.Duration //执行间隔
-	taskChain []TaskInf
-	mu        sync.Mutex
+	taskChan chan TaskInf
+}
+
+func NewTaskManage() *TaskManager {
+	return &TaskManager{
+		taskChan: make(chan TaskInf, 10),
+	}
 }
 
 func (t *TaskManager) AddTask(task ...TaskInf) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.taskChain = append(t.taskChain, task...)
-}
-
-func (t *TaskManager) DelTask(index int) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if index < 0 || index >= len(t.taskChain) {
-		return
+	for _, v := range task {
+		t.taskChan <- v
 	}
-	t.taskChain = append(t.taskChain[:index], t.taskChain[index+1:]...)
 }
 
 func (t *TaskManager) Run(ctx context.Context) {
-	ticker := time.NewTicker(t.Interval)
-	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			for _, task := range t.taskChain {
+		case task := <-t.taskChan: //会阻塞
+			go func() {
+				defer func() {
+					if err := recover(); err != nil {
+						logrus.Error("task run panic:", err)
+					}
+				}()
+				if task.EndpointTime() <= time.Now().Unix() && task.Next() {
+					//执行任务
+					if err := task.Run(); err != nil {
+						logrus.Error("task run error:", err)
+					}
+				}
 				if task.Next() {
+					time.Sleep(time.Second * 1)
+					t.taskChan <- task
+				}
+			}()
+		}
+	}
+}
+
+type JobManager struct {
+	jobChan chan JobInf
+}
+
+func NewJobManager() *JobManager {
+	return &JobManager{
+		jobChan: make(chan JobInf, 10),
+	}
+}
+
+func (j *JobManager) AddJob(job ...JobInf) {
+	for _, v := range job {
+		j.jobChan <- v
+	}
+}
+
+func (j *JobManager) Run(ctx context.Context) {
+	/***
+	ticker:=time.NewTicker(time.Second)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C: //存在溢出
+			//每隔一秒检查一次
+			for {
+				select {
+				case job := <-j.jobChan: //会阻塞
 					go func() {
 						defer func() {
 							if err := recover(); err != nil {
-								logrus.Error("task run panic:", err)
+								logrus.Error("job run panic:", err)
 							}
 						}()
-						t := task
-						if err := t.Run(); err != nil {
-							logrus.Error("task run error:", err)
+						if job.EndpointTime() <= time.Now().Unix() {
+							//执行任务
+							if err := job.Run(); err != nil {
+								logrus.Error("job run error:", err)
+							}
+						}else{
+							//还未到执行时间
+							j.jobChan <- job
 						}
 					}()
+				default:
+					return
 				}
 			}
+		}
+	}**/
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case job := <-j.jobChan: //会阻塞
+			go func() {
+				defer func() {
+					if err := recover(); err != nil {
+						logrus.Error("job run panic:", err)
+					}
+				}()
+				if job.EndpointTime() <= time.Now().Unix() {
+					//执行任务
+					if err := job.Run(); err != nil {
+						logrus.Error("job run error:", err)
+					}
+				} else {
+					//还未到执行时间
+					time.Sleep(time.Second * 1)
+					j.jobChan <- job
+				}
+			}()
 		}
 	}
 }
