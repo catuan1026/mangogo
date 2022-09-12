@@ -15,3 +15,7 @@ type RespResult struct {
 }
 
 type M[K KeyAble, V any] map[K]V
+
+type TableInf interface {
+	TableName() string
+}

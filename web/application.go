@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 	"github.com/catuan1026/mangogo/comm"
 	"github.com/gin-gonic/gin"
@@ -30,7 +31,8 @@ type Application struct {
 	cdbChain    []*gorm.DB
 	credisChain []*redis.Client
 
-	appConf *AppConfInfo
+	appConf     *AppConfInfo
+	tablesChain []comm.TableInf // 数据库表
 }
 
 type AppPropertyHook func(envProperty map[string]string)
@@ -344,4 +346,29 @@ func (a *Application) GetRedis(i int) *redis.Client {
 		return nil
 	}
 	return a.credisChain[i]
+}
+
+func (a *Application) AppendTable(tb ...comm.TableInf) {
+	a.tablesChain = append(a.tablesChain, tb...)
+}
+
+func (a *Application) InitTable() error {
+	if a.cdbChain == nil || len(a.cdbChain) == 0 {
+		return errors.New("db not found")
+	}
+	//检查是否有重复的
+	dbs := make([]interface{}, 0, len(a.tablesChain))
+	for i, tb := range a.tablesChain {
+		for j, tb2 := range a.tablesChain {
+			if i == j {
+				continue
+			}
+			if tb.TableName() == tb2.TableName() {
+				return errors.New("table name repeat")
+			}
+		}
+		dbs = append(dbs, tb)
+	}
+	err := a.DBDefault().AutoMigrate(dbs...)
+	return err
 }
