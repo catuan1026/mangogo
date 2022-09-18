@@ -23,3 +23,7 @@ type TableInf interface {
 type CleanAble interface {
 	Clean() error
 }
+
+type InitInf interface {
+	Init() error
+}

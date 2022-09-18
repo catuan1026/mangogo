@@ -34,6 +34,7 @@ type Application struct {
 	appConf        *AppConfInfo
 	tablesChain    []comm.TableInf  // 数据库表
 	cleanAbleChain []comm.CleanAble // 可清理的
+	initChain      []comm.InitInf   //需要初始化的对象
 
 	cleanChain []comm.CleanAble
 }
@@ -385,6 +386,13 @@ func (a *Application) Clean() {
 			}
 		}
 	}
+}
+
+func (a *Application) RegisterInit(needInits ...comm.InitInf) {
+	if a.initChain == nil {
+		a.initChain = make([]comm.InitInf, 0, len(needInits))
+	}
+	a.initChain = append(a.initChain, needInits...)
 }
 
 func (a *Application) InitTable() error {
