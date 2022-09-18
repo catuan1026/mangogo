@@ -19,3 +19,7 @@ type M[K KeyAble, V any] map[K]V
 type TableInf interface {
 	TableName() string
 }
+
+type CleanAble interface {
+	Clean() error
+}

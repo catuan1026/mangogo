@@ -31,8 +31,11 @@ type Application struct {
 	cdbChain    []*gorm.DB
 	credisChain []*redis.Client
 
-	appConf     *AppConfInfo
-	tablesChain []comm.TableInf // 数据库表
+	appConf        *AppConfInfo
+	tablesChain    []comm.TableInf  // 数据库表
+	cleanAbleChain []comm.CleanAble // 可清理的
+
+	cleanChain []comm.CleanAble
 }
 
 type AppPropertyHook func(envProperty map[string]string)
@@ -352,21 +355,45 @@ func (a *Application) AppendTable(tb ...comm.TableInf) {
 	a.tablesChain = append(a.tablesChain, tb...)
 }
 
+func (a *Application) RegisterTable(tb ...comm.TableInf) {
+	//检查是否有重复的表
+	for _, t := range tb {
+		for _, t2 := range a.tablesChain {
+			if t.TableName() == t2.TableName() {
+				panic("table name already exists")
+			}
+		}
+	}
+	a.tablesChain = append(a.tablesChain, tb...)
+}
+
+func (a *Application) RegisterCleanAble(c ...comm.CleanAble) {
+	if a.cleanAbleChain == nil {
+		a.cleanAbleChain = make([]comm.CleanAble, 0, len(c))
+	}
+	a.cleanAbleChain = append(a.cleanAbleChain, c...)
+}
+
+func (a *Application) Clean() {
+	if a.cleanAbleChain != nil {
+		for _, c := range a.cleanAbleChain {
+			err := c.Clean()
+			if err != nil {
+				logrus.WithFields(logrus.Fields{
+					"tip": "clean",
+				}).Error(err.Error())
+			}
+		}
+	}
+}
+
 func (a *Application) InitTable() error {
 	if a.cdbChain == nil || len(a.cdbChain) == 0 {
 		return errors.New("db not found")
 	}
 	//检查是否有重复的
 	dbs := make([]interface{}, 0, len(a.tablesChain))
-	for i, tb := range a.tablesChain {
-		for j, tb2 := range a.tablesChain {
-			if i == j {
-				continue
-			}
-			if tb.TableName() == tb2.TableName() {
-				return errors.New("table name repeat")
-			}
-		}
+	for _, tb := range a.tablesChain {
 		dbs = append(dbs, tb)
 	}
 	err := a.DBDefault().AutoMigrate(dbs...)
